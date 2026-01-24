@@ -130,6 +130,8 @@ public class Renderer
     /// When <see langword="true"/>, the skybox is included in scene rendering.
     /// </summary>
     public bool ShowSkybox { get; set; } = true;
+    public bool ShowWater { get; set; } = true;
+    public bool ShowTranslucent { get; set; } = true;
 
     /// <summary>
     /// Initializes a new renderer with the given context.
@@ -359,9 +361,17 @@ public class Renderer
         }
     }
 
-    private static void RenderTranslucentLayer(Scene scene, Scene.RenderContext renderContext)
+    private void RenderTranslucentLayer(Scene scene, Scene.RenderContext renderContext)
     {
-        scene.RenderWaterLayer(renderContext);
+        if (!ShowTranslucent)
+        {
+            return;
+        }
+
+        if (ShowWater)
+        {
+            scene.RenderWaterLayer(renderContext);
+        }
 
         GL.DepthMask(false);
         GL.Enable(EnableCap.Blend);
@@ -585,6 +595,11 @@ public class Renderer
         if (ShadowDepthBuffer is null || ViewBuffer is null)
         {
             throw new InvalidOperationException("Initialize() must be called before rendering");
+        }
+
+        if (!Scene.LightingInfo.EnableDynamicShadows)
+        {
+            return;
         }
 
         GL.Viewport(0, 0, ShadowDepthBuffer.Width, ShadowDepthBuffer.Height);
