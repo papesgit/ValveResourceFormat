@@ -19,6 +19,7 @@ namespace ValveResourceFormat.Renderer
         /// Horizontal rotation angle in radians.
         /// </summary>
         public float Yaw { get; set; }
+        public float Roll { get; set; }
 
         /// <summary>
         /// Unit vector pointing in the camera's look direction.
@@ -34,6 +35,8 @@ namespace ValveResourceFormat.Renderer
         /// Unit vector pointing upward from the camera's perspective.
         /// </summary>
         public Vector3 Up { get; private set; }
+
+        private bool _useCustomBasis;
 
         private RendererContext RendererContext;
 
@@ -88,7 +91,7 @@ namespace ValveResourceFormat.Renderer
 
             RecalculateDirectionVectors();
 
-            CameraViewMatrix = Matrix4x4.CreateLookAt(location, location + Forward, Vector3.UnitZ);
+            CameraViewMatrix = Matrix4x4.CreateLookAt(location, location + Forward, Up);
             ViewProjectionMatrix = CameraViewMatrix * ProjectionMatrix;
             ViewFrustum.Update(ViewProjectionMatrix);
         }
@@ -98,17 +101,19 @@ namespace ValveResourceFormat.Renderer
         /// </summary>
         public void RecalculateDirectionVectors()
         {
-            var (yawSin, yawCos) = MathF.SinCos(Yaw);
-            var (pitchSin, pitchCos) = MathF.SinCos(Pitch);
+            if (_useCustomBasis)
+            {
+                return;
+            }
 
-            Forward = new Vector3(yawCos * pitchCos, yawSin * pitchCos, pitchSin);
-            Up = new Vector3(yawCos * pitchSin, yawSin * pitchSin, pitchCos);
+            var qPitch = Quaternion.CreateFromAxisAngle(Vector3.UnitY, Pitch);
+            var qYaw = Quaternion.CreateFromAxisAngle(Vector3.UnitZ, Yaw);
+            var qRoll = Quaternion.CreateFromAxisAngle(Vector3.UnitX, Roll);
+            var q = Quaternion.Normalize(qYaw * qPitch * qRoll);
 
-            const float PiOver2 = MathF.PI / 2f;
-            var (piOver2Sin, piOver2Cos) = MathF.SinCos(Yaw - PiOver2);
-
-            Right = new Vector3(piOver2Cos, piOver2Sin, 0);
-            // Right = Vector3.Cross(Forward, Up);
+            Forward = Vector3.Normalize(Vector3.Transform(Vector3.UnitX, q));
+            Up = Vector3.Normalize(Vector3.Transform(Vector3.UnitZ, q));
+            Right = Vector3.Normalize(Vector3.Transform(-Vector3.UnitY, q));
         }
 
         /// <summary>
@@ -190,6 +195,11 @@ namespace ValveResourceFormat.Renderer
             Location = fromOther.Location;
             Pitch = fromOther.Pitch;
             Yaw = fromOther.Yaw;
+            Roll = fromOther.Roll;
+            _useCustomBasis = fromOther._useCustomBasis;
+            Forward = fromOther.Forward;
+            Up = fromOther.Up;
+            Right = fromOther.Right;
             ProjectionMatrix = fromOther.ProjectionMatrix;
             CameraViewMatrix = fromOther.CameraViewMatrix;
             ViewProjectionMatrix = fromOther.ViewProjectionMatrix;
@@ -200,6 +210,7 @@ namespace ValveResourceFormat.Renderer
         public void SetLocation(Vector3 location)
         {
             Location = location;
+            _useCustomBasis = false;
         }
 
         /// <summary>Sets <see cref="Location"/>, <see cref="Pitch"/>, and <see cref="Yaw"/> without recalculating matrices.</summary>
@@ -208,6 +219,31 @@ namespace ValveResourceFormat.Renderer
             Location = location;
             Pitch = pitch;
             Yaw = yaw;
+            _useCustomBasis = false;
+        }
+
+        public void SetLocationPitchYawRoll(Vector3 location, float pitch, float yaw, float roll)
+        {
+            Location = location;
+            Pitch = pitch;
+            Yaw = yaw;
+            Roll = roll;
+            _useCustomBasis = false;
+        }
+
+        public void SetLocationForwardUp(Vector3 location, Vector3 forward, Vector3 up)
+        {
+            Location = location;
+            _useCustomBasis = true;
+
+            Forward = Vector3.Normalize(forward);
+            var right = Vector3.Cross(Forward, up);
+            if (right.LengthSquared() < 1e-6f)
+            {
+                right = Vector3.Cross(Forward, Vector3.UnitZ);
+            }
+            Right = Vector3.Normalize(right);
+            Up = Vector3.Normalize(Vector3.Cross(Right, Forward));
         }
 
         /// <summary>
@@ -218,6 +254,8 @@ namespace ValveResourceFormat.Renderer
             var dir = Vector3.Normalize(target - Location);
             Yaw = MathF.Atan2(dir.Y, dir.X);
             Pitch = MathF.Asin(dir.Z);
+            Roll = 0f;
+            _useCustomBasis = false;
 
             ClampRotation();
         }
