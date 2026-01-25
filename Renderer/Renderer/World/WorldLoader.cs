@@ -1,3 +1,4 @@
+using System;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
@@ -226,6 +227,13 @@ namespace ValveResourceFormat.Renderer.World
             lightEntityStore.Invoke(
                 scene.AllNodes.Where(static n => n is SceneLight).Cast<SceneLight>().ToList()
             );
+
+            if (scene.RenderAttributes.ContainsKey("VRF_FAST_UNLIT"))
+            {
+                var lightingData = scene.LightingInfo.LightingData;
+                Array.Clear(lightingData.NumLights, 0, lightingData.NumLights.Length);
+                Array.Clear(lightingData.NumLightsBakedShadowIndex, 0, lightingData.NumLightsBakedShadowIndex.Length);
+            }
         }
 
         /// <summary>
@@ -407,6 +415,21 @@ namespace ValveResourceFormat.Renderer.World
             }
 
             scene.RenderAttributes.TryAdd("S_LIGHTMAP_VERSION_MINOR", (byte)scene.LightingInfo.LightmapGameVersionNumber);
+
+            if (scene.RenderAttributes.ContainsKey("VRF_FAST_UNLIT"))
+            {
+                result.HasValidLightmaps = false;
+                result.HasValidLightProbes = false;
+                result.LightmapGameVersionNumber = 0;
+                result.Lightmaps.Clear();
+                result.LightProbes.Clear();
+                result.EnvMaps.Clear();
+                result.CubemapType = CubemapType.None;
+                result.LightProbeType = LightProbeType.None;
+                scene.RenderAttributes["S_LIGHTMAP_VERSION_MINOR"] = 0;
+                scene.RenderAttributes["S_SCENE_CUBEMAP_TYPE"] = 0;
+                scene.RenderAttributes["S_SCENE_PROBE_TYPE"] = 0;
+            }
         }
 
         static bool IsCamera(string cls)
