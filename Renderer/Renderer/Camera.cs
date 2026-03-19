@@ -19,6 +19,9 @@ namespace ValveResourceFormat.Renderer
         /// Horizontal rotation angle in radians.
         /// </summary>
         public float Yaw { get; set; }
+        /// <summary>
+        /// Rotation angle around the forward axis in radians.
+        /// </summary>
         public float Roll { get; set; }
 
         /// <summary>
@@ -222,6 +225,7 @@ namespace ValveResourceFormat.Renderer
             _useCustomBasis = false;
         }
 
+        /// <summary>Sets <see cref="Location"/>, <see cref="Pitch"/>, <see cref="Yaw"/>, and <see cref="Roll"/> without recalculating matrices.</summary>
         public void SetLocationPitchYawRoll(Vector3 location, float pitch, float yaw, float roll)
         {
             Location = location;
@@ -231,6 +235,7 @@ namespace ValveResourceFormat.Renderer
             _useCustomBasis = false;
         }
 
+        /// <summary>Sets <see cref="Location"/> and an explicit orthonormal camera basis without recalculating matrices.</summary>
         public void SetLocationForwardUp(Vector3 location, Vector3 forward, Vector3 up)
         {
             Location = location;
