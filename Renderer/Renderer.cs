@@ -130,7 +130,13 @@ public class Renderer
     /// When <see langword="true"/>, the skybox is included in scene rendering.
     /// </summary>
     public bool ShowSkybox { get; set; } = true;
+    /// <summary>
+    /// When <see langword="true"/>, water surfaces are rendered as part of the translucent pass.
+    /// </summary>
     public bool ShowWater { get; set; } = true;
+    /// <summary>
+    /// When <see langword="true"/>, translucent scene geometry is rendered.
+    /// </summary>
     public bool ShowTranslucent { get; set; } = true;
 
     /// <summary>
