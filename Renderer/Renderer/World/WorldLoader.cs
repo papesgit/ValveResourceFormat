@@ -231,8 +231,10 @@ namespace ValveResourceFormat.Renderer.World
             if (scene.RenderAttributes.ContainsKey("VRF_FAST_UNLIT"))
             {
                 var lightingData = scene.LightingInfo.LightingData;
-                Array.Clear(lightingData.NumLights, 0, lightingData.NumLights.Length);
-                Array.Clear(lightingData.NumLightsBakedShadowIndex, 0, lightingData.NumLightsBakedShadowIndex.Length);
+                lightingData.StaticLightCount = 0;
+                lightingData.DynamicLightCount = 0;
+                lightingData.NumBarnLights = 0;
+                lightingData.SunLightBakedShadowMask = default;
             }
         }
 
