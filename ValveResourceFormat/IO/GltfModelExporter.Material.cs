@@ -162,7 +162,7 @@ public partial class GltfModelExporter
                 }
             }
 
-            WriteMaterialExtras(material, renderMaterial, textures);
+            WriteMaterialExtras(material, renderMaterial, renderMaterial.TextureParams, textures);
             return;
         }
 
@@ -276,7 +276,11 @@ public partial class GltfModelExporter
             TieTextureToMaterial(texture, "MetallicRoughness", ormRedChannelForOcclusion);
         }
 
-        WriteMaterialExtras(material, renderMaterial, renderMaterial.TextureParams);
+        var exportedSource2Textures = ExportAllMaterialTextures
+            ? ExportAllSource2MaterialTextures(renderMaterial, model)
+            : [];
+
+        WriteMaterialExtras(material, renderMaterial, renderMaterial.TextureParams, exportedSource2Textures);
 
         SKBitmap GetBitmap(string texturePath)
         {
@@ -378,6 +382,33 @@ public partial class GltfModelExporter
             await LinkAndSaveImage(image, pngBytes).ConfigureAwait(false);
         }
 
+        Dictionary<string, string> ExportAllSource2MaterialTextures(VMaterial sourceMaterial, ModelRoot sourceModel)
+        {
+            var textures = new Dictionary<string, string>(sourceMaterial.TextureParams.Count);
+
+            foreach (var (textureKey, texturePath) in sourceMaterial.TextureParams)
+            {
+                var textureName = GetSource2TextureExportName(texturePath);
+                textures[textureKey] = textureName;
+
+                if (ExportedTextures.ContainsKey(textureName))
+                {
+                    continue;
+                }
+
+                var newImage = CreateNewGLTFImage(sourceModel, textureName);
+                var texture = sourceModel.UseTexture(newImage, TextureSampler);
+                texture.Name = newImage.Name;
+
+                ExportedTextures[textureName] = texture;
+
+                var texTask = AddTexture(newImage, texturePath, RemapInstruction.Default);
+                TextureExportingTasks.Add(texTask);
+            }
+
+            return textures;
+        }
+
         void TieTextureToMaterial(Texture tex, string gltfPackedName, bool ormRedChannelForOcclusion)
         {
             var materialChannel = material.FindChannel(gltfPackedName);
@@ -451,7 +482,17 @@ public partial class GltfModelExporter
             return instructions;
         }
 
-        static void WriteMaterialExtras(Material material, VMaterial renderMaterial, Dictionary<string, string> textures)
+        static string GetSource2TextureExportName(string texturePath)
+        {
+            var textureHash = MurmurHash2.Hash(texturePath, StringToken.MURMUR2SEED);
+            return $"{Path.GetFileNameWithoutExtension(texturePath)}_source2_{textureHash:x8}.png";
+        }
+
+        static void WriteMaterialExtras(
+            Material material,
+            VMaterial renderMaterial,
+            Dictionary<string, string> textureParams,
+            Dictionary<string, string> exportedTextureParams)
         {
             var intParamsJson = new System.Text.Json.Nodes.JsonObject();
             foreach (var kvp in renderMaterial.IntParams)
@@ -478,9 +519,15 @@ public partial class GltfModelExporter
             }
 
             var textureParamsJson = new System.Text.Json.Nodes.JsonObject();
-            foreach (var kvp in textures)
+            foreach (var kvp in textureParams)
             {
                 textureParamsJson[kvp.Key] = kvp.Value;
+            }
+
+            var exportedTextureParamsJson = new System.Text.Json.Nodes.JsonObject();
+            foreach (var kvp in exportedTextureParams)
+            {
+                exportedTextureParamsJson[kvp.Key] = kvp.Value;
             }
 
             material.Extras = new System.Text.Json.Nodes.JsonObject
@@ -493,6 +540,7 @@ public partial class GltfModelExporter
                     ["FloatParams"] = floatParamsJson,
                     ["VectorParams"] = vectorParamsJson,
                     ["TextureParams"] = textureParamsJson,
+                    ["ExportedTextureParams"] = exportedTextureParamsJson,
                 }
             };
         }

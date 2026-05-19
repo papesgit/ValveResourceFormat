@@ -63,6 +63,12 @@ namespace ValveResourceFormat.IO
         public bool AdaptTextures { get; set; } = true;
 
         /// <summary>
+        /// Gets or sets a value indicating whether to export all original material texture parameters.
+        /// These textures are not necessarily bound to standard glTF material channels, but are listed in material extras.
+        /// </summary>
+        public bool ExportAllMaterialTextures { get; set; } = true;
+
+        /// <summary>
         /// Gets or sets a value indicating whether to save satellite images separately.
         /// </summary>
         public bool SatelliteImages { get; set; } = true;

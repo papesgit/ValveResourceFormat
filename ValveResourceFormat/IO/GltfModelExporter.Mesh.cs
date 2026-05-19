@@ -193,6 +193,10 @@ public partial class GltfModelExporter
                                 }
 
                                 accessors[accessorName] = CreateAccessor(exportedModel, vectors);
+                                if (attribute.SemanticName == "TEXCOORD" && attribute.ShaderSemantic == "VertexPaintBlendParams")
+                                {
+                                    accessors["_SOURCE2_BLEND_COLOR"] = CreateAccessor(exportedModel, vectors);
+                                }
                                 break;
                             }
 
