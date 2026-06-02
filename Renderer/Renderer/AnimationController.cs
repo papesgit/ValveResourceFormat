@@ -9,6 +9,7 @@ namespace ValveResourceFormat.Renderer
     public partial class AnimationController : BaseAnimationController
     {
         private Action<Animation?, int> updateHandler = (_, __) => { };
+        private bool externalPoseDirty;
 
         /// <summary>Gets or sets the playback speed multiplier applied to the animation timestep.</summary>
         public float FrametimeMultiplier { get; set; } = 1.0f;
@@ -86,6 +87,12 @@ namespace ValveResourceFormat.Renderer
         /// <returns><see langword="true"/> if the pose was updated; <see langword="false"/> if nothing changed.</returns>
         public override bool Update(float timeStep)
         {
+            if (externalPoseDirty)
+            {
+                externalPoseDirty = false;
+                return true;
+            }
+
             if ((ActiveAnimation == null || IsPaused || ActiveAnimation.FrameCount == 1) && !forceUpdate)
             {
                 return false;
@@ -267,6 +274,40 @@ namespace ValveResourceFormat.Renderer
         public void RegisterUpdateHandler(Action<Animation?, int> handler)
         {
             updateHandler = handler;
+        }
+
+        /// <summary>
+        /// Applies externally supplied parent-space bone transforms and marks the pose for GPU upload.
+        /// </summary>
+        public void SetExternalLocalPose(IReadOnlyList<Matrix4x4> localBoneTransforms)
+        {
+            static void ComputePoseRecursive(Bone bone, Matrix4x4 parentTransform, IReadOnlyList<Matrix4x4> localTransforms, Span<Matrix4x4> pose)
+            {
+                var localTransform = bone.Index < localTransforms.Count
+                    ? localTransforms[bone.Index]
+                    : bone.BindPose;
+
+                var boneTransform = localTransform * parentTransform;
+                pose[bone.Index] = boneTransform;
+
+                foreach (var child in bone.Children)
+                {
+                    ComputePoseRecursive(child, boneTransform, localTransforms, pose);
+                }
+            }
+
+            foreach (var root in Skeleton.Roots)
+            {
+                if (root.IsProceduralCloth)
+                {
+                    continue;
+                }
+
+                ComputePoseRecursive(root, Transform, localBoneTransforms, Pose);
+            }
+
+            AnimationFrame = null;
+            externalPoseDirty = true;
         }
 
         /// <summary>

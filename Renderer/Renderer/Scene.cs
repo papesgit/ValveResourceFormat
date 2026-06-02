@@ -1944,6 +1944,59 @@ namespace ValveResourceFormat.Renderer
             }
         }
 
+        /// <summary>
+        /// Assigns already-loaded scene lighting data to a node added after scene initialization.
+        /// </summary>
+        /// <param name="node">The node to update.</param>
+        public void RefreshLighting(SceneNode node)
+        {
+            if (LightingInfo.LightProbes.Count > 0)
+            {
+                var isAtlas = LightingInfo.LightProbeType == LightProbeType.ProbeAtlas;
+
+                static bool IsValid(SceneLightProbe probe, bool isAtlas) => isAtlas switch
+                {
+                    true => probe is { Irradiance: not null, DirectLightShadows: not null },
+                    false => true,
+                };
+
+                var globalProbe = LightingInfo.LightProbes
+                    .Where(probe => IsValid(probe, isAtlas))
+                    .OrderByDescending(static lpv => lpv.IndoorOutdoorLevel)
+                    .ThenBy(static lpv => lpv.AtlasSize.LengthSquared())
+                    .LastOrDefault();
+
+                if (globalProbe != null)
+                {
+                    node.LightProbeBinding = globalProbe;
+                }
+            }
+
+            if (LightingInfo.EnvMaps.Count > 0)
+            {
+                node.EnvMaps.Clear();
+                node.EnvMaps.AddRange(LightingInfo.EnvMaps);
+                node.EnvMaps.Sort((a, b) =>
+                {
+                    var result = b.IndoorOutdoorLevel.CompareTo(a.IndoorOutdoorLevel);
+                    if (result != 0)
+                    {
+                        return result;
+                    }
+
+                    var aDistance = Vector3.Distance(node.BoundingBox.Center, a.BoundingBox.Center);
+                    var bDistance = Vector3.Distance(node.BoundingBox.Center, b.BoundingBox.Center);
+
+                    return aDistance.CompareTo(bDistance);
+                });
+
+                node.ShaderEnvMapVisibility = node.ShaderEnvMapVisibility.Store(
+                    node.Flags.HasFlag(ObjectTypeFlags.DisableVisCulling)
+                        ? LightingInfo.EnvMaps
+                        : node.EnvMaps);
+            }
+        }
+
         private void UpdateGpuEnvmapData(SceneEnvMap envMap, int index)
         {
             Debug.Assert(envMapBuffer is not null);

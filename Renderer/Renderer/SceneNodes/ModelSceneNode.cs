@@ -81,7 +81,8 @@ namespace ValveResourceFormat.Renderer.SceneNodes
         /// <param name="model">The model resource to render.</param>
         /// <param name="skin">The material group (skin) name to activate, or <see langword="null"/> for the default.</param>
         /// <param name="isWorldPreview">When <see langword="true"/>, only embedded animations are loaded.</param>
-        public ModelSceneNode(Scene scene, Model model, string? skin = null, bool isWorldPreview = false)
+        /// <param name="skipAnimations">When <see langword="true"/>, no animations are loaded.</param>
+        public ModelSceneNode(Scene scene, Model model, string? skin = null, bool isWorldPreview = false, bool skipAnimations = false)
             : base(scene)
         {
             materialGroups = model.GetMaterialGroups().ToArray();
@@ -98,7 +99,7 @@ namespace ValveResourceFormat.Renderer.SceneNodes
             boneCount = model.Skeleton.Bones.Length;
             remappingTable = model.Data.GetIntegerArray("m_remappingTable").Select(i => (int)i).ToArray();
 
-            if (model.Data.GetArray<string>("m_vecNmSkeletonRefs") is { Length: > 0 } nmSkelRefs)
+            if (!skipAnimations && model.Data.GetArray<string>("m_vecNmSkeletonRefs") is { Length: > 0 } nmSkelRefs)
             {
                 foreach (var skeletonName in nmSkelRefs)
                 {
@@ -134,7 +135,10 @@ namespace ValveResourceFormat.Renderer.SceneNodes
 
             LoadMeshes(model);
             UpdateBoundingBox();
-            LoadAnimations(model, embeddedAnimationsOnly: isWorldPreview);
+            if (!skipAnimations)
+            {
+                LoadAnimations(model, embeddedAnimationsOnly: isWorldPreview);
+            }
 
             SetCharacterEyeRenderParams();
             Attachments = model.Attachments;
@@ -539,6 +543,25 @@ namespace ValveResourceFormat.Renderer.SceneNodes
                     renderer.SetBoneMatricesBuffer(null);
                 }
             }
+        }
+
+        /// <summary>
+        /// Applies externally supplied parent-space bone transforms and enables skeletal skinning.
+        /// </summary>
+        public void SetExternalPose(IReadOnlyList<Matrix4x4> localBoneTransforms)
+        {
+            if (localBoneTransforms.Count == 0)
+            {
+                return;
+            }
+
+            SetupBoneMatrixBuffers();
+            foreach (var renderer in meshRenderers)
+            {
+                renderer.SetBoneMatricesBuffer(boneMatricesGpu);
+            }
+
+            AnimationController.SetExternalLocalPose(localBoneTransforms);
         }
 
         /// <summary>
