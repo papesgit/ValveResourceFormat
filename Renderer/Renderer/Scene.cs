@@ -1960,15 +1960,42 @@ namespace ValveResourceFormat.Renderer
                     false => true,
                 };
 
-                var globalProbe = LightingInfo.LightProbes
+                var sortedLightProbes = LightingInfo.LightProbes
                     .Where(probe => IsValid(probe, isAtlas))
                     .OrderByDescending(static lpv => lpv.IndoorOutdoorLevel)
                     .ThenBy(static lpv => lpv.AtlasSize.LengthSquared())
-                    .LastOrDefault();
+                    .ToList();
 
-                if (globalProbe != null)
+                if (sortedLightProbes.Count > 0)
                 {
-                    node.LightProbeBinding = globalProbe;
+                    SceneLightProbe? probe = null;
+
+                    var precomputedHandshake = node.LightProbeVolumePrecomputedHandshake;
+                    if (precomputedHandshake != 0)
+                    {
+                        if (LightingInfo.LightmapGameVersionNumber == 0 && precomputedHandshake <= LightingInfo.LightProbes.Count)
+                        {
+                            probe = LightingInfo.LightProbes[precomputedHandshake - 1];
+                        }
+                        else
+                        {
+                            LightingInfo.ProbeHandshakes.TryGetValue(precomputedHandshake, out probe);
+                        }
+                    }
+
+                    if (probe == null && !node.Flags.HasFlag(ObjectTypeFlags.DisableVisCulling))
+                    {
+                        var origin = node.Transform.Translation;
+                        var center = node.BoundingBox.Center;
+                        probe = sortedLightProbes.FirstOrDefault(probe => probe.BoundingBox.Contains(origin))
+                            ?? sortedLightProbes.FirstOrDefault(probe => probe.BoundingBox.Contains(center))
+                            ?? sortedLightProbes
+                                .OrderBy(probe => DistanceSquaredToAabb(origin, probe.BoundingBox))
+                                .ThenBy(probe => DistanceSquaredToAabb(center, probe.BoundingBox))
+                                .FirstOrDefault();
+                    }
+
+                    node.LightProbeBinding = probe ?? sortedLightProbes[^1];
                 }
             }
 
@@ -1995,6 +2022,12 @@ namespace ValveResourceFormat.Renderer
                         ? LightingInfo.EnvMaps
                         : node.EnvMaps);
             }
+        }
+
+        private static float DistanceSquaredToAabb(Vector3 point, AABB bounds)
+        {
+            var clamped = Vector3.Clamp(point, bounds.Min, bounds.Max);
+            return Vector3.DistanceSquared(point, clamped);
         }
 
         private void UpdateGpuEnvmapData(SceneEnvMap envMap, int index)
