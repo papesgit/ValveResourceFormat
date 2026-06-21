@@ -49,6 +49,7 @@ namespace ValveResourceFormat.Renderer.World
         public Scene? SkyboxScene { get; set; }
         /// <summary>The 2D skybox, if one was found during entity loading.</summary>
         public SceneSkybox2D? Skybox2D { get; set; }
+        private bool Skybox2DFromReferencedSkybox { get; set; }
         /// <summary>The loaded navigation mesh, populated by <see cref="LoadNavigationMesh"/>.</summary>
         public NavMeshFile? NavMesh { get; set; }
 
@@ -563,7 +564,7 @@ namespace ValveResourceFormat.Renderer.World
                         tintColor = entity.GetColor32Property("tint_color");
                     }
 
-                    if (!disabled && skyname != null)
+                    if (!Skybox2DFromReferencedSkybox && !disabled && skyname != null)
                     {
                         var rotation = transformationMatrix with
                         {
@@ -1261,6 +1262,11 @@ namespace ValveResourceFormat.Renderer.World
             SkyboxScene.LightingInfo.LightingData.IsSkybox = 1u;
 
             var skyboxResult = LoadMap(targetmapname, SkyboxScene);
+            if (skyboxResult.Skybox2D != null)
+            {
+                Skybox2D = skyboxResult.Skybox2D;
+                Skybox2DFromReferencedSkybox = true;
+            }
 
             // Take origin and angles from skybox_reference
             EntityTransformHelper.DecomposeTransformationMatrix(entity, out _, out var skyboxReferenceRotationMatrix, out var skyboxReferencePositionMatrix);
