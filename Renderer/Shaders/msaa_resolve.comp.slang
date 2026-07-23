@@ -36,7 +36,10 @@ void main()
     vec3 resolved = vec3(0.0);
 
 #if D_DOF == 1
-    float lowestDepth = 1.0;
+    // Reverse-Z: larger depth is closer to the camera. Alpha-to-coverage foliage can
+    // contain both foreground leaf and background samples in one pixel, so use the
+    // nearest covered depth for CoC instead of leaking the background CoC onto it.
+    float nearestDepth = 0.0;
     // Alpha carries the circle of confusion for the depth of field pass (set below)
     float outputAlpha = 1.0;
 #else
@@ -52,7 +55,7 @@ void main()
         resolved += s * (invNumSamples / (max(s.r, max(s.g, s.b)) + 1.0));
 
 #if D_DOF == 1
-        lowestDepth = min(texelFetch(g_tSceneDepth, sampleCoord, i).x, lowestDepth);
+        nearestDepth = max(texelFetch(g_tSceneDepth, sampleCoord, i).x, nearestDepth);
 #else
         outputAlpha += texel.a * invNumSamples;
 #endif
@@ -68,7 +71,7 @@ void main()
     vec4 screenToClip = vec4(
         sampleUV.x * 2.0 - 1.0,
         sampleUV.y * 2.0 - 1.0,
-        LinearRamp(g_flViewportMinZ, g_flViewportMaxZ, lowestDepth),
+        LinearRamp(g_flViewportMinZ, g_flViewportMaxZ, nearestDepth),
         1.0
     );
 
@@ -88,7 +91,9 @@ void main()
         float farScale = g_vNearFarScaleBias.z;
         float farBias = g_vNearFarScaleBias.w;
 
-        float closeCoC = clamp((distanceFromLensPlane * nearScale) + -nearBias, 0.0, 1.0);
+        // NearScale is negative. NearBias must retain its sign so the near blurry/crisp
+        // interval works on either side of the focal plane (e.g. 200 -> 400).
+        float closeCoC = clamp((distanceFromLensPlane * nearScale) + nearBias, 0.0, 1.0);
         float farCoC = clamp((distanceFromLensPlane * farScale) + farBias, 0.0, 1.0);
 
         outputAlpha = max(closeCoC, farCoC);
