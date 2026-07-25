@@ -67,17 +67,28 @@ void main()
 #if D_DOF == 1
     vec2 sampleUV = (vec2(coord) + 0.5) * g_vInvViewportSize.xy;
 
+    // The main scene occupies the 0.05..1.0 reverse-Z range. 3D skybox geometry is
+    // deliberately rendered into 0.0..0.05 instead, so it remains behind the main
+    // scene. Undo the respective depth-range mapping before reconstructing a world
+    // position; treating sky depth as main-scene depth reconstructs it at infinity
+    // and consequently leaves it permanently at maximum far blur.
+    float sceneDepth = nearestDepth < g_flViewportMinZ
+        ? nearestDepth / g_flViewportMinZ
+        : LinearRamp(g_flViewportMinZ, g_flViewportMaxZ, nearestDepth);
+
     // Convert from screen coords to clipspace (normalised device coordinates)
     vec4 screenToClip = vec4(
         sampleUV.x * 2.0 - 1.0,
         sampleUV.y * 2.0 - 1.0,
-        LinearRamp(g_flViewportMinZ, g_flViewportMaxZ, nearestDepth),
+        sceneDepth,
         1.0
     );
 
     // Undo view projection to get back 3d world coordinates
     vec4 worldPos = g_invViewProjMatrix * screenToClip;
 
+    // An untouched depth value is the 2D/infinite sky. It has no finite world-space
+    // distance, so retain the default full far blur for it.
     if (worldPos.w != 0.0)
     {
         vec4 worldPos3D = vec4(worldPos.xyz / worldPos.w, 1.0);
@@ -96,7 +107,10 @@ void main()
         float closeCoC = clamp((distanceFromLensPlane * nearScale) + nearBias, 0.0, 1.0);
         float farCoC = clamp((distanceFromLensPlane * farScale) + farBias, 0.0, 1.0);
 
-        outputAlpha = max(closeCoC, farCoC);
+        // Keep the CoC sign through to the blur pass: positive denotes far blur and
+        // negative denotes near blur. When both bands overlap, retain the stronger
+        // one just as the former unsigned CoC did.
+        outputAlpha = farCoC >= closeCoC ? farCoC : -closeCoC;
     }
 #endif
 
