@@ -161,6 +161,19 @@ namespace ValveResourceFormat.Renderer
         /// <summary>Gets or sets whether GPU indirect drawing is used for eligible aggregate scene nodes.</summary>
         public bool EnableIndirectDraws { get; set; } = true;
 
+        /// <summary>
+        /// Gets or sets whether dense aggregate views automatically fall back to coarse fragment draws.
+        /// </summary>
+        public bool EnableAdaptiveIndirectDraws { get; set; } = true;
+
+        /// <summary>Gets whether the current view is using coarse aggregate fragment draws.</summary>
+        public bool UsingCpuAggregateDraws { get; private set; }
+
+        /// <summary>
+        /// Gets the fraction of aggregate meshlets whose parent fragments intersect the current CPU view frustum.
+        /// </summary>
+        public float EstimatedVisibleAggregateMeshletRatio { get; private set; }
+
         /// <summary>Gets or sets whether GPU draw compaction is applied after frustum culling to remove empty indirect draw commands.</summary>
         public bool EnableCompaction { get; set; } = true;
 
@@ -172,6 +185,8 @@ namespace ValveResourceFormat.Renderer
 
         private readonly List<SceneNode> staticNodes = [];
         private readonly List<SceneNode> dynamicNodes = [];
+        private readonly List<SceneNode> adaptiveCullResults = [];
+        private long activeAggregateMeshletCount;
 
         private Shader? OutlineShader;
 
@@ -802,6 +817,7 @@ namespace ValveResourceFormat.Renderer
 
             var frustum = cullFrustum ??= camera.ViewFrustum;
             var cullResults = GetFrustumCullResults(frustum);
+            UpdateAdaptiveIndirectDrawState(frustum);
 
             // Collect mesh calls
             foreach (var node in cullResults)
@@ -895,6 +911,51 @@ namespace ValveResourceFormat.Renderer
                     }
                 }
             }
+        }
+
+        private void UpdateAdaptiveIndirectDrawState(Frustum frustum)
+        {
+            if (!EnableAdaptiveIndirectDraws || !EnableIndirectDraws || SceneMeshletCount == 0)
+            {
+                UsingCpuAggregateDraws = false;
+                EstimatedVisibleAggregateMeshletRatio = 0f;
+                DrawMeshletsIndirect = EnableIndirectDraws && SceneMeshletCount > 0 && IndirectDrawsGpu != null;
+                return;
+            }
+
+            long visibleMeshlets = 0;
+            adaptiveCullResults.Clear();
+            StaticOctree.Root.QueryNoOcclusion(frustum, adaptiveCullResults);
+
+            foreach (var fragment in adaptiveCullResults.OfType<SceneAggregate.Fragment>())
+            {
+                if (fragment.Parent.CanDrawIndirect && fragment.LayerEnabled)
+                {
+                    visibleMeshlets += fragment.DrawCall.NumMeshlets;
+                }
+            }
+
+            EstimatedVisibleAggregateMeshletRatio = activeAggregateMeshletCount > 0
+                ? Math.Clamp(visibleMeshlets / (float)activeAggregateMeshletCount, 0f, 1f)
+                : 0f;
+
+            // Hysteresis prevents camera movement near the crossover from switching paths every frame.
+            const float enterCoarseDrawRatio = 0.82f;
+            const float leaveCoarseDrawRatio = 0.68f;
+            var useCpuAggregateDraws = UsingCpuAggregateDraws
+                ? EstimatedVisibleAggregateMeshletRatio > leaveCoarseDrawRatio
+                : EstimatedVisibleAggregateMeshletRatio >= enterCoarseDrawRatio;
+
+            if (useCpuAggregateDraws != UsingCpuAggregateDraws)
+            {
+                UsingCpuAggregateDraws = useCpuAggregateDraws;
+                DepthPyramidValid = false;
+            }
+
+            DrawMeshletsIndirect = EnableIndirectDraws
+                && !UsingCpuAggregateDraws
+                && SceneMeshletCount > 0
+                && IndirectDrawsGpu != null;
         }
 
         private List<SceneNode> CulledShadowNodes { get; } = [];
@@ -1085,7 +1146,10 @@ namespace ValveResourceFormat.Renderer
         internal void UpdateIndirectRenderingState()
         {
             CompactMeshletDraws = false;
-            DrawMeshletsIndirect = EnableIndirectDraws && SceneMeshletCount > 0 && IndirectDrawsGpu != null;
+            DrawMeshletsIndirect = EnableIndirectDraws
+                && !UsingCpuAggregateDraws
+                && SceneMeshletCount > 0
+                && IndirectDrawsGpu != null;
             EnableOcclusionQueries = EnableOcclusionCulling && !DrawMeshletsIndirect;
 
             if (DrawMeshletsIndirect)
@@ -1633,12 +1697,18 @@ namespace ValveResourceFormat.Renderer
                 }
 
                 StaticOctree.Clear(maxBounds);
+                activeAggregateMeshletCount = 0;
 
                 foreach (var node in staticNodes)
                 {
                     if (node.LayerEnabled)
                     {
                         StaticOctree.Insert(node);
+
+                        if (node is SceneAggregate.Fragment { Parent.CanDrawIndirect: true } fragment)
+                        {
+                            activeAggregateMeshletCount += fragment.DrawCall.NumMeshlets;
+                        }
                     }
                 }
 
