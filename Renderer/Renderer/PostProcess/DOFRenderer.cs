@@ -11,6 +11,8 @@ public class DOFRenderer
     /// <summary>Maximum number of spiral bokeh samples.</summary>
     public const int MAX_DOF_SAMPLES = 256; // constant to 2.39996322 i think?
 
+    private const float Cs2MaxBlurRadiusScale = 7.5f / 11.0f;
+
     /// <summary>Gets or sets the world-space depth at which the near blur becomes fully blurred.</summary>
     public float NearBlurry { get; set; } = -100;
     /// <summary>Gets or sets the world-space depth at which the near blur becomes fully sharp.</summary>
@@ -151,7 +153,7 @@ public class DOFRenderer
         input.FarScale = 1.0f / farRange;
         input.FarBias = -FarCrisp / farRange;
 
-        input.MaxBlurSize = MaxBlurSize;
+        input.MaxBlurSize = MaxBlurSize * Cs2MaxBlurRadiusScale;
         input.RadScale = RadScale;
 
         input.Width = BlurredResult!.Width;
